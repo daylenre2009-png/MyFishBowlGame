@@ -6,7 +6,9 @@ import subprocess
 
 # CRITICAL: This environment variable bypasses the broken Mac touch provider 
 # on Python 3.13+ and falls back to standard mouse clicks.
-os.environ['KIVY_NO_INPUT'] = '1'
+from kivy.utils import platform
+if platform in ('macosx', 'win', 'linux'):
+    os.environ['KIVY_NO_INPUT'] = '1'
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
