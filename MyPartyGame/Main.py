@@ -400,7 +400,7 @@ class UnifiedCardAndWheelApp(App):
         game_script_mapping = {
             "Telestrations": "Telestrations.py",
             "Chameleon": "Chameleon.py",
-            "pictionary": "Pictionary.py"
+            "Pictionary": "Pictionary.py"
         }
         
         target_script = game_script_mapping.get(game_title)
