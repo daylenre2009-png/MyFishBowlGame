@@ -1,269 +1,290 @@
-import tkinter as tk
-from tkinter import colorchooser, messagebox, filedialog, ttk
-from PIL import Image, ImageDraw, ImageTk
-import subprocess  # Added to launch external scripts
-import sys         # Added to detect the current python interpreter path
+import sys
+import subprocess
+from PIL import Image, ImageDraw
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.slider import Slider
+from kivy.uix.widget import Widget
+from kivy.uix.popup import Popup
+from kivy.uix.colorpicker import ColorPicker
+from kivy.graphics import Color, Rectangle
+from kivy.graphics.texture import Texture
+from kivy.clock import Clock
+from kivy.core.window import Window
 
-class ProfessionalDrawingApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Studio Canvas Pro")
-        self.root.geometry("1150x750")
-        
-        # --- Professional Deep Navy Color Palette ---
-        self.CLR_BG = "#0b132b"         
-        self.CLR_SIDEBAR = "#1c2541"   
-        self.CLR_BTN_IDLE = "#3a506b"  
-        self.CLR_BTN_ACTIVE = "#2b3b4e" 
-        self.CLR_ACCENT = "#5bc0be"     
-        
-        self.root.configure(bg=self.CLR_BG)
+# Set background color to mimic the original app's navy theme
+Window.clearcolor = (11/255, 19/255, 43/255, 1)
 
-        # --- Configure ttk Styles for Mac Compatibility ---
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
+class KivyCanvasWorkspace(Widget):
+    """The central viewport workspace handling touch input and texture updates."""
+    def __init__(self, app_instance, **kwargs):
+        super().__init__(**kwargs)
+        self.app = app_instance
+        self.initialized = False
+        # Use Clock to schedule the initial resize after Kivy calculates real screen layout sizes
+        self.bind(size=self.on_workspace_resize, pos=self.on_workspace_resize)
         
-        # Base settings for Normal Buttons
-        self.style.configure('Custom.TButton', 
-                             background=self.CLR_BTN_IDLE, 
-                             foreground="white", 
-                             font=("Helvetica", 10, "bold"),
-                             borderwidth=0,
-                             focuscolor='none')
-        # HOVER FIX: Forces the button to stay CLR_BTN_IDLE or slightly shift when hovered/active
-        self.style.map('Custom.TButton',
-                       background=[('active', self.CLR_BTN_IDLE), ('pressed', self.CLR_BTN_ACTIVE)],
-                       foreground=[('active', 'white')])
-        
-        # Base settings for Selected Active Tool Buttons
-        self.style.configure('Active.TButton', 
-                             background=self.CLR_BTN_ACTIVE, 
-                             foreground="white", 
-                             font=("Helvetica", 10, "bold"),
-                             borderwidth=0,
-                             focuscolor='none')
-        # HOVER FIX: Forces active tools to stay CLR_BTN_ACTIVE when hovered
-        self.style.map('Active.TButton',
-                       background=[('active', self.CLR_BTN_ACTIVE)],
-                       foreground=[('active', 'white')])
-                             
-        # Base settings for the Color Picker Button
-        self.style.configure('ColorPicker.TButton',
-                             background=self.CLR_BTN_IDLE,
-                             foreground="white",
-                             font=("Helvetica", 10, "bold"),
-                             borderwidth=0,
-                             focuscolor='none')
-        # HOVER FIX: Dynamic tracking handled in choose_color, initialization state mapping here
-        self.style.map('ColorPicker.TButton',
-                       background=[('active', self.CLR_BTN_IDLE)],
-                       foreground=[('active', 'white')])
+    def on_workspace_resize(self, instance, value):
+        # Prevent premature initializing at Kivy's default 100x100 layout state
+        if self.width <= 100 or self.height <= 100:
+            return
+            
+        if not self.initialized:
+            self.app.canvas_width = int(self.width)
+            self.app.canvas_height = int(self.height)
+            self.app.pil_image = Image.new("RGB", (self.app.canvas_width, self.app.canvas_height), "white")
+            self.app.pil_draw = ImageDraw.Draw(self.app.pil_image)
+            self.app.save_to_history()
+            self.initialized = True
+        else:
+            # Safely expand canvas buffer context if window is dynamically maximized
+            if self.width > self.app.canvas_width or self.height > self.app.canvas_height:
+                new_w = max(int(self.width), self.app.canvas_width)
+                new_h = max(int(self.height), self.app.canvas_height)
+                new_pil = Image.new("RGB", (new_w, new_h), "white")
+                new_pil.paste(self.app.pil_image, (0, 0))
+                self.app.pil_image = new_pil
+                self.app.pil_draw = ImageDraw.Draw(self.app.pil_image)
+                self.app.canvas_width = new_w
+                self.app.canvas_height = new_h
+        self.refresh_from_pil()
 
-        # Application Core States
-        self.brush_color = "#00b4d8"    
+    def refresh_from_pil(self):
+        self.canvas.clear()
+        if not hasattr(self, 'app') or not hasattr(self.app, 'pil_image'):
+            return
+            
+        # Flip vertically since PIL coordinate space starts Top-Left, Kivy Bottom-Left
+        flipped_image = self.app.pil_image.transpose(Image.FLIP_TOP_BOTTOM)
+        data = flipped_image.convert('RGBA').tobytes()
+        
+        texture = Texture.create(size=self.app.pil_image.size, colorfmt='rgba')
+        texture.blit_buffer(data, colorfmt='rgba', bufferfmt='ubyte')
+        
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            # Clip drawing to match exact container dimensions
+            Rectangle(texture=texture, pos=self.pos, size=(self.width, self.height))
+
+    def on_touch_down(self, touch):
+        if not self.collide_point(*touch.pos):
+            return False
+            
+        if not self.app.timer_started:
+            self.app.start_timer()
+
+        local_x = int(touch.x - self.x)
+        local_y = int(self.height - (touch.y - self.y))
+
+        if self.app.current_tool == "fill":
+            self.app.flood_fill(local_x, local_y)
+            self.app.save_to_history()
+        else:
+            touch.ud['last_x'] = local_x
+            touch.ud['last_y'] = local_y
+            # Enable single point dot clicks
+            self.app.pil_draw.ellipse(
+                [local_x - self.app.brush_size//2, local_y - self.app.brush_size//2, 
+                 local_x + self.app.brush_size//2, local_y + self.app.brush_size//2],
+                fill=self.app.active_color
+            )
+            self.refresh_from_pil()
+        return True
+
+    def on_touch_move(self, touch):
+        if not self.collide_point(*touch.pos) or self.app.current_tool == "fill":
+            return False
+            
+        if 'last_x' in touch.ud:
+            local_x = int(touch.x - self.x)
+            local_y = int(self.height - (touch.y - self.y))
+            
+            self.app.pil_draw.line(
+                [(touch.ud['last_x'], touch.ud['last_y']), (local_x, local_y)],
+                fill=self.app.active_color, width=self.app.brush_size, joint="round"
+            )
+            touch.ud['last_x'] = local_x
+            touch.ud['last_y'] = local_y
+            self.refresh_from_pil()
+        return True
+
+    def on_touch_up(self, touch):
+        if 'last_x' in touch.ud:
+            if self.app.current_tool != "fill":
+                self.app.save_to_history()
+            return True
+        return False
+
+
+class StudioCanvasProApp(App):
+    def build(self):
+        self.title = "Studio Canvas Pro"
+        
+        self.CLR_SIDEBAR = (28/255, 37/255, 65/255, 1)
+        self.CLR_BTN_IDLE = (58/255, 80/255, 107/255, 1)
+        self.CLR_BTN_ACTIVE = (43/255, 59/255, 78/255, 1)
+        self.CLR_ACCENT = (91/255, 192/255, 190/255, 1)
+
+        self.brush_color = "#00b4d8"
         self.eraser_color = "#ffffff"
         self.active_color = self.brush_color
         self.brush_size = 5
-        self.current_tool = "draw" 
+        self.current_tool = "draw"
         
-        # Timer Setup
-        self.time_left = 300 
+        self.time_left = 300
         self.timer_running = False
-        self.timer_started = False  
-        self.timer_id = None
-        
-        # Undo/Redo Engine History Stacks
+        self.timer_started = False
+        self.timer_event = None
+
         self.undo_stack = []
         self.redo_stack = []
-        
-        self.last_x, self.last_y = None, None
 
-        # --- Base Layout Infrastructure ---
-        self.setup_sidebar()
-        self.setup_canvas_workspace()
+        Window.bind(on_key_down=self.handle_keyboard_shortcuts)
 
-        # Core Backing Engine (Hidden PIL high-res layer)
-        self.canvas_width = 900
-        self.canvas_height = 650
-        self.pil_image = Image.new("RGB", (self.canvas_width, self.canvas_height), "white")
-        self.pil_draw = ImageDraw.Draw(self.pil_image)
-        
-        # Save initial blank slate to undo history
-        self.save_to_history()
-        
-        # Keyboard Shortcut Bindings (Undo & Redo)
-        self.root.bind("<Command-z>", lambda event: self.undo())
-        self.root.bind("<Control-z>", lambda event: self.undo())
-        self.root.bind("<Command-y>", lambda event: self.redo())
-        self.root.bind("<Control-y>", lambda event: self.redo())
+        root_layout = BoxLayout(orientation='horizontal')
 
-    def setup_sidebar(self):
-        """Builds a professional creative suite sidebar on the left side."""
-        self.sidebar = tk.Frame(self.root, bg=self.CLR_SIDEBAR, width=220, bd=0)
-        self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
-        self.sidebar.pack_propagate(False) 
+        # Set sidebar spacing to 0; elastic spacers will govern layout scaling between groups exclusively
+        sidebar = BoxLayout(orientation='vertical', size_hint_x=None, width=240, padding=15, spacing=0)
+        with sidebar.canvas.before:
+            Color(*self.CLR_SIDEBAR)
+            self.sidebar_bg = Rectangle(pos=sidebar.pos, size=sidebar.size)
+        sidebar.bind(pos=self._update_sidebar_rect, size=self._update_sidebar_rect)
 
-        # App Title Header
-        title = tk.Label(self.sidebar, text="STUDIO CANVAS", font=("Helvetica", 14, "bold"), 
-                         bg=self.CLR_SIDEBAR, fg=self.CLR_ACCENT)
-        title.pack(pady=(20, 5))
+        title_label = Label(text="STUDIO CANVAS", font_size='16sp', bold=True, color=self.CLR_ACCENT, size_hint_y=None, height=30)
+        subtitle_label = Label(text="Professional Edition", font_size='11sp', italic=True, color=(108/255, 117/255, 125/255, 1), size_hint_y=None, height=20)
+        sidebar.add_widget(title_label)
+        sidebar.add_widget(subtitle_label)
         
-        subtitle = tk.Label(self.sidebar, text="Professional Edition", font=("Helvetica", 9, "italic"), 
-                            bg=self.CLR_SIDEBAR, fg="#6c757d")
-        subtitle.pack(pady=(0, 20))
+        # Spacer below header
+        sidebar.add_widget(Widget(size_hint_y=1))
 
-        # --- Interactive Tool Control Buttons ---
-        self.btn_draw = self.create_ui_button("✏️ Brush Tool", self.set_tool_draw)
-        self.btn_draw.pack(pady=5, fill=tk.X, padx=15)
+        # --- CLUSTER 1: Tool Buttons (Kept close together) ---
+        tools_box = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=130)
+        self.btn_draw = Button(text="✏️ Brush Tool", background_color=self.CLR_BTN_ACTIVE, background_normal='', size_hint_y=None, height=40)
+        self.btn_draw.bind(on_press=self.set_tool_draw)
         
-        self.btn_eraser = self.create_ui_button("🧽 Eraser Tool", self.set_tool_eraser)
-        self.btn_eraser.pack(pady=5, fill=tk.X, padx=15)
+        self.btn_eraser = Button(text="🧽 Eraser Tool", background_color=self.CLR_BTN_IDLE, background_normal='', size_hint_y=None, height=40)
+        self.btn_eraser.bind(on_press=self.set_tool_eraser)
         
-        self.btn_fill = self.create_ui_button("🪣 Paint Bucket", self.set_tool_fill)
-        self.btn_fill.pack(pady=5, fill=tk.X, padx=15)
-        
-        self.set_tool_draw()
+        self.btn_fill = Button(text="🪣 Paint Bucket", background_color=self.CLR_BTN_IDLE, background_normal='', size_hint_y=None, height=40)
+        self.btn_fill.bind(on_press=self.set_tool_fill)
 
-        # Color Spectrum Picker Block
-        color_frame = tk.Frame(self.sidebar, bg=self.CLR_SIDEBAR)
-        color_frame.pack(pady=15, fill=tk.X, padx=15)
+        tools_box.add_widget(self.btn_draw)
+        tools_box.add_widget(self.btn_eraser)
+        tools_box.add_widget(self.btn_fill)
+        sidebar.add_widget(tools_box)
         
-        cl_label = tk.Label(color_frame, text="Active Color Swatch", font=("Helvetica", 9, "bold"), bg=self.CLR_SIDEBAR, fg="white")
-        cl_label.pack(anchor=tk.W, pady=(0, 4))
+        # Spacer below tools
+        sidebar.add_widget(Widget(size_hint_y=1))
+
+        # --- Color Swatch ---
+        sidebar.add_widget(Label(text="Active Color Swatch", font_size='12sp', bold=True, size_hint_y=None, height=20, halign='left'))
+        self.color_preview = Button(text="Pick Color", background_color=self.hex_to_kivy_rgba(self.brush_color), background_normal='', size_hint_y=None, height=40)
+        self.color_preview.bind(on_press=self.open_color_picker)
+        sidebar.add_widget(self.color_preview)
         
-        self.color_preview = ttk.Button(color_frame, text="Pick Color", style='ColorPicker.TButton', command=self.choose_color)
-        self.color_preview.pack(fill=tk.X, ipady=4)
+        # Spacer below color selector
+        sidebar.add_widget(Widget(size_hint_y=1))
 
-        # Dynamic Size Slider Configuration
-        size_frame = tk.Frame(self.sidebar, bg=self.CLR_SIDEBAR)
-        size_frame.pack(pady=15, fill=tk.X, padx=15)
+        # --- Brush Size Slider ---
+        sidebar.add_widget(Label(text="Brush Size", font_size='12sp', bold=True, size_hint_y=None, height=20))
+        size_slider = Slider(min=1, max=100, value=self.brush_size, step=1, size_hint_y=None, height=30)
+        size_slider.bind(value=self.update_size)
+        sidebar.add_widget(size_slider)
         
-        sz_label = tk.Label(size_frame, text="Brush Size", font=("Helvetica", 9, "bold"), bg=self.CLR_SIDEBAR, fg="white")
-        sz_label.pack(anchor=tk.W)
+        # Spacer below brush slider
+        sidebar.add_widget(Widget(size_hint_y=1))
+
+        # --- Timer Box ---
+        timer_box = BoxLayout(orientation='vertical', size_hint_y=None, height=80, padding=5, spacing=5)
+        with timer_box.canvas.before:
+            Color(11/255, 19/255, 27/255, 1)
+            self.timer_bg = Rectangle(pos=timer_box.pos, size=timer_box.size)
+        timer_box.bind(pos=self._update_timer_rect, size=self._update_timer_rect)
+
+        self.timer_label = Label(text="⏱️ 05:00", font_size='16sp', bold=True)
+        btn_reset_timer = Button(text="Reset Timer", background_color=self.CLR_BTN_IDLE, background_normal='', size_hint_y=None, height=30)
+        btn_reset_timer.bind(on_press=self.reset_timer)
+        timer_box.add_widget(self.timer_label)
+        timer_box.add_widget(btn_reset_timer)
+        sidebar.add_widget(timer_box)
         
-        self.size_scale = tk.Scale(size_frame, from_=1, to=100, orient=tk.HORIZONTAL, 
-                                   bg=self.CLR_SIDEBAR, fg="white", highlightthickness=0,
-                                   troughcolor=self.CLR_BG, activebackground=self.CLR_BTN_ACTIVE,
-                                   command=self.update_size)
-        self.size_scale.set(self.brush_size)
-        self.size_scale.pack(fill=tk.X, pady=5)
+        # Spacer below timer
+        sidebar.add_widget(Widget(size_hint_y=1))
 
-        # --- TIMER WIDGET DISPLAY ---
-        self.timer_container = tk.Frame(self.sidebar, bg="#0b132b", bd=0, pady=10, padx=10)
-        self.timer_container.pack(pady=15, fill=tk.X, padx=15)
+        # --- CLUSTER 2: Action Controls (Kept close together) ---
+        actions_box = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=175)
         
-        self.timer_label = tk.Label(self.timer_container, text="⏱️ 05:00", bg="#0b132b", fg="#e2e8f0", 
-                                    font=("Courier New", 14, "bold"))
-        self.timer_label.pack(side=tk.TOP, pady=2)
+        utils_grid = GridLayout(cols=2, spacing=5, size_hint_y=None, height=35)
+        btn_undo = Button(text="↩️ Undo", background_color=self.CLR_BTN_IDLE, background_normal='')
+        btn_undo.bind(on_press=lambda x: self.undo())
+        btn_redo = Button(text="↪️ Redo", background_color=self.CLR_BTN_IDLE, background_normal='')
+        btn_redo.bind(on_press=lambda x: self.redo())
+        utils_grid.add_widget(btn_undo)
+        utils_grid.add_widget(btn_redo)
+
+        btn_export = Button(text="💾 Export Artwork", background_color=self.CLR_BTN_IDLE, background_normal='', size_hint_y=None, height=40)
+        btn_export.bind(on_press=self.save_artwork)
+
+        btn_wipe = Button(text="🗑️ Wipe Canvas", background_color=self.CLR_BTN_IDLE, background_normal='', size_hint_y=None, height=40)
+        btn_wipe.bind(on_press=self.clear_canvas)
+
+        btn_menu = Button(text="Main Menu", background_color=self.CLR_BTN_IDLE, background_normal='', size_hint_y=None, height=40)
+        btn_menu.bind(on_press=self.go_to_menu)
+
+        actions_box.add_widget(utils_grid)
+        actions_box.add_widget(btn_export)
+        actions_box.add_widget(btn_wipe)
+        actions_box.add_widget(btn_menu)
         
-        reset_timer_btn = ttk.Button(self.timer_container, text="Reset Timer", style='Custom.TButton', command=self.reset_timer)
-        reset_timer_btn.pack(side=tk.TOP, pady=4)
+        sidebar.add_widget(actions_box)
 
-        # --- UTILITY COMMAND PANEL (BOTTOM) ---
-        utils_frame = tk.Frame(self.sidebar, bg=self.CLR_SIDEBAR)
-        utils_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=15, padx=15)
-
-        # History Buttons Layout Side-By-Side
-        hist_frame = tk.Frame(utils_frame, bg=self.CLR_SIDEBAR)
-        hist_frame.pack(fill=tk.X, pady=2)
+        self.workspace_widget = KivyCanvasWorkspace(self)
         
-        ttk.Button(hist_frame, text="↩️ Undo", style='Custom.TButton', command=self.undo).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
-        ttk.Button(hist_frame, text="↪️ Redo", style='Custom.TButton', command=self.redo).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(2, 0))
-        
-        ttk.Button(utils_frame, text="💾 Export Artwork", style='Custom.TButton', command=self.save_artwork).pack(fill=tk.X, pady=4)
-        ttk.Button(utils_frame, text="🗑️ Wipe Canvas", style='Custom.TButton', command=self.clear_canvas).pack(fill=tk.X, pady=4)
-        
-        # New Main Menu Navigation Button
-        ttk.Button(utils_frame, text="Main Menu", style='Custom.TButton', command=self.go_to_menu).pack(fill=tk.X, pady=(10, 4))
+        root_layout.add_widget(sidebar)
+        root_layout.add_widget(self.workspace_widget)
+        return root_layout
 
-    def create_ui_button(self, text, command):
-        """Helper to create stylized, modern flat buttons using ttk."""
-        return ttk.Button(self.sidebar, text=text, style='Custom.TButton', command=command)
+    def _update_sidebar_rect(self, instance, value):
+        self.sidebar_bg.pos = instance.pos
+        self.sidebar_bg.size = instance.size
 
-    def setup_canvas_workspace(self):
-        """Maintains clean canvas positioning in center screen viewport workspace."""
-        self.workspace = tk.Frame(self.root, bg=self.CLR_BG)
-        self.workspace.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=30, pady=30)
+    def _update_timer_rect(self, instance, value):
+        self.timer_bg.pos = instance.pos
+        self.timer_bg.size = instance.size
 
-        canvas_border = tk.Frame(self.workspace, bg="#111827", bd=1)
-        canvas_border.pack(fill=tk.BOTH, expand=True)
-
-        self.canvas = tk.Canvas(canvas_border, bg="#ffffff", cursor="crosshair", bd=0, highlightthickness=0)
-        self.canvas.pack(fill=tk.BOTH, expand=True)
-
-        self.canvas.bind("<Button-1>", self.handle_click)
-        self.canvas.bind("<B1-Motion>", self.draw)
-        self.canvas.bind("<ButtonRelease-1>", self.stop_drawing)
-        self.canvas.bind("<Configure>", self.on_canvas_resize)
-
-    # --- Timer Subroutines ---
     def start_timer(self):
         if not self.timer_running:
             self.timer_running = True
             self.timer_started = True
-            self.update_timer_countdown()
+            self.timer_event = Clock.schedule_interval(self.update_timer_countdown, 1.0)
 
-    def update_timer_countdown(self):
+    def update_timer_countdown(self, dt):
         if self.time_left > 0:
             mins, secs = divmod(self.time_left, 60)
-            self.timer_label.config(text=f"⏱️ {mins:02d}:{secs:02d}", fg="#4ade80")
+            self.timer_label.text = f"⏱️ {mins:02d}:{secs:02d}"
+            self.timer_label.color = (74/255, 222/255, 128/255, 1)
             self.time_left -= 1
-            self.timer_id = self.root.after(1000, self.update_timer_countdown)
         else:
             self.timer_running = False
-            self.timer_label.config(text="⏱️ DEADLINE", fg="#ef4444")
-            messagebox.showinfo("Session Expired", "5 Minutes are complete! Excellent work.")
+            self.timer_label.text = "⏱️ DEADLINE"
+            self.timer_label.color = (239/255, 68/255, 68/255, 1)
+            if self.timer_event:
+                Clock.unschedule(self.timer_event)
 
-    def reset_timer(self):
-        if self.timer_id:
-            self.root.after_cancel(self.timer_id)
+    def reset_timer(self, instance=None):
+        if self.timer_event:
+            Clock.unschedule(self.timer_event)
         self.time_left = 300
         self.timer_running = False
         self.timer_started = False
-        self.timer_label.config(text="⏱️ 05:00", fg="#e2e8f0")
+        self.timer_label.text = "⏱️ 05:00"
+        self.timer_label.color = (1, 1, 1, 1)
 
-    # --- Structural Drawing Logic ---
-    def handle_click(self, event):
-        if not self.timer_started:
-            self.start_timer()
-
-        if self.current_tool == "fill":
-            self.flood_fill(event.x, event.y)
-            self.save_to_history() 
-        else:
-            self.last_x, self.last_y = event.x, event.y
-
-    def draw(self, event):
-        if self.current_tool == "fill":
-            return
-            
-        if self.last_x is not None and self.last_y is not None:
-            self.canvas.create_line(
-                self.last_x, self.last_y, event.x, event.y,
-                width=self.brush_size, fill=self.active_color,
-                capstyle=tk.ROUND, smooth=True
-            )
-            self.pil_draw.line(
-                [(self.last_x, self.last_y), (event.x, event.y)],
-                fill=self.active_color, width=self.brush_size, joint="round"
-            )
-        self.last_x, self.last_y = event.x, event.y
-
-    def stop_drawing(self, event):
-        if self.current_tool != "fill":
-            self.save_to_history() 
-        self.last_x, self.last_y = None, None
-
-    def flood_fill(self, start_x, start_y):
-        if start_x >= self.canvas.winfo_width() or start_y >= self.canvas.winfo_height() or start_x < 0 or start_y < 0:
-            return
-        target_rgb = self.hex_to_rgb(self.brush_color)
-        ImageDraw.floodfill(self.pil_image, xy=(start_x, start_y), value=target_rgb, thresh=15)
-        self.refresh_canvas_from_pil()
-
-    # --- History Engine: Undo & Redo System ---
     def save_to_history(self):
-        """Pushes a snapshot copy of the current drawing onto history stack tracking."""
         if hasattr(self, 'pil_image'):
             if len(self.undo_stack) >= 20:
                 self.undo_stack.pop(0)
@@ -271,122 +292,107 @@ class ProfessionalDrawingApp:
             self.redo_stack.clear()
 
     def undo(self):
-        """Reverts the canvas back by one stroke operation."""
         if len(self.undo_stack) > 1:
             current_state = self.undo_stack.pop()
             self.redo_stack.append(current_state)
-            
-            previous_snapshot = self.undo_stack[-1].copy()
-            self.pil_image = previous_snapshot
+            self.pil_image = self.undo_stack[-1].copy()
             self.pil_draw = ImageDraw.Draw(self.pil_image)
-            self.refresh_canvas_from_pil()
-        else:
-            messagebox.showinfo("Undo", "Canvas is already back at its initial state.")
+            self.workspace_widget.refresh_from_pil()
 
     def redo(self):
-        """Restores a previously undone stroke action if no newer edits occurred."""
         if self.redo_stack:
             restored_state = self.redo_stack.pop()
             self.undo_stack.append(restored_state)
-            
             self.pil_image = restored_state.copy()
             self.pil_draw = ImageDraw.Draw(self.pil_image)
-            self.refresh_canvas_from_pil()
-        else:
-            messagebox.showinfo("Redo", "Nothing to redo!")
+            self.workspace_widget.refresh_from_pil()
 
-    def save_artwork(self):
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".png",
-            filetypes=[("PNG Image", "*.png"), ("JPEG Image", "*.jpg"), ("All Files", "*.*")]
-        )
-        if file_path:
-            cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
-            cropped_output = self.pil_image.crop((0, 0, cw, ch))
-            cropped_output.save(file_path)
-            messagebox.showinfo("Success", "Masterpiece saved successfully!")
+    def flood_fill(self, start_x, start_y):
+        target_rgb = self.hex_to_rgb(self.brush_color)
+        ImageDraw.floodfill(self.pil_image, xy=(start_x, start_y), value=target_rgb, thresh=15)
+        self.workspace_widget.refresh_from_pil()
 
-    def refresh_canvas_from_pil(self):
-        self.canvas.delete("all")
-        self.tk_image = ImageTk.PhotoImage(self.pil_image)
-        self.canvas.create_image(0, 0, image=self.tk_image, anchor=tk.NW)
+    def clear_canvas(self, instance=None):
+        self.pil_image = Image.new("RGB", (self.canvas_width, self.canvas_height), "white")
+        self.pil_draw = ImageDraw.Draw(self.pil_image)
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+        self.save_to_history()
+        self.set_tool_draw()
+        self.workspace_widget.refresh_from_pil()
 
-    def on_canvas_resize(self, event):
-        if event.width > self.canvas_width or event.height > self.canvas_height:
-            new_pil = Image.new("RGB", (event.width, event.height), "white")
-            new_pil.paste(self.pil_image, (0, 0))
-            self.pil_image = new_pil
-            self.pil_draw = ImageDraw.Draw(self.pil_image)
-            self.canvas_width = event.width
-            self.canvas_height = event.height
+    def save_artwork(self, instance=None):
+        output_filename = "masterpiece.png"
+        self.pil_image.save(output_filename)
+        print(f"Artwork saved locally to {output_filename}")
+
+    def reset_tool_highlights(self):
+        self.btn_draw.background_color = self.CLR_BTN_IDLE
+        self.btn_eraser.background_color = self.CLR_BTN_IDLE
+        self.btn_fill.background_color = self.CLR_BTN_IDLE
+
+    def set_tool_draw(self, instance=None):
+        self.current_tool = "draw"
+        self.active_color = self.brush_color
+        self.reset_tool_highlights()
+        self.btn_draw.background_color = self.CLR_BTN_ACTIVE
+
+    def set_tool_eraser(self, instance=None):
+        self.current_tool = "erase"
+        self.active_color = self.eraser_color
+        self.reset_tool_highlights()
+        self.btn_eraser.background_color = self.CLR_BTN_ACTIVE
+
+    def set_tool_fill(self, instance=None):
+        self.current_tool = "fill"
+        self.reset_tool_highlights()
+        self.btn_fill.background_color = self.CLR_BTN_ACTIVE
+
+    def update_size(self, instance, value):
+        self.brush_size = int(value)
+
+    def open_color_picker(self, instance):
+        picker = ColorPicker(color=self.hex_to_kivy_rgba(self.brush_color))
+        popup = Popup(title='Pick Active Color Spec', content=picker, size_hint=(0.8, 0.8))
+        
+        def on_color_chosen(picker_instance, color_value):
+            hex_str = '#{:02x}{:02x}{:02x}'.format(
+                int(max(0, min(255, color_value[0] * 255))),
+                int(max(0, min(255, color_value[1] * 255))),
+                int(max(0, min(255, color_value[2] * 255)))
+            )
+            self.brush_color = hex_str
+            self.color_preview.background_color = color_value
+            if self.current_tool == "draw":
+                self.active_color = hex_str
+                
+        picker.bind(color=on_color_chosen)
+        popup.open()
+
+    def handle_keyboard_shortcuts(self, window, key, scancode, codepoint, modifiers):
+        if 'ctrl' in modifiers or 'meta' in modifiers:
+            if key == 122: # 'z'
+                self.undo()
+                return True
+            elif key == 121: # 'y'
+                self.redo()
+                return True
+        return False
 
     def hex_to_rgb(self, hex_str):
         hex_str = hex_str.lstrip('#')
         return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
-    # --- Professional Interactive UI State Handlers ---
-    def reset_tool_button_highlights(self):
-        if hasattr(self, 'btn_draw'): self.btn_draw.config(style='Custom.TButton')
-        if hasattr(self, 'btn_eraser'): self.btn_eraser.config(style='Custom.TButton')
-        if hasattr(self, 'btn_fill'): self.btn_fill.config(style='Custom.TButton')
+    def hex_to_kivy_rgba(self, hex_str):
+        rgb = self.hex_to_rgb(hex_str)
+        return (rgb[0]/255, rgb[1]/255, rgb[2]/255, 1)
 
-    def set_tool_draw(self):
-        self.current_tool = "draw"
-        self.active_color = self.brush_color
-        self.reset_tool_button_highlights()
-        if hasattr(self, 'btn_draw'): self.btn_draw.config(style='Active.TButton')
-
-    def set_tool_eraser(self):
-        self.current_tool = "erase"
-        self.active_color = self.eraser_color
-        self.reset_tool_button_highlights()
-        if hasattr(self, 'btn_eraser'): self.btn_eraser.config(style='Active.TButton')
-
-    def set_tool_fill(self):
-        self.current_tool = "fill"
-        self.reset_tool_button_highlights()
-        if hasattr(self, 'btn_fill'): self.btn_fill.config(style='Active.TButton')
-
-    def choose_color(self):
-        color = colorchooser.askcolor(color=self.brush_color)[1]
-        if color:
-            self.brush_color = color
-            
-            # Dynamically adjusts text color to preserve legibility against dark/light swatches
-            rgb = self.hex_to_rgb(color)
-            luminance = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
-            text_color = "black" if luminance > 0.5 else "white"
-            
-            # Reconfigures the style layout + the map hover array to match the color chosen
-            self.style.configure('ColorPicker.TButton', background=color, foreground=text_color)
-            self.style.map('ColorPicker.TButton', background=[('active', color)])
-            
-            if self.current_tool == "draw":
-                self.active_color = color
-
-    def update_size(self, size):
-        self.brush_size = int(size)
-
-    def clear_canvas(self):
-        if messagebox.askyesno("Clear All", "Are you sure you want to clear your current work completely?"):
-            self.canvas.delete("all")
-            self.pil_image = Image.new("RGB", (2000, 2000), "white")
-            self.pil_draw = ImageDraw.Draw(self.pil_image)
-            self.undo_stack.clear()
-            self.redo_stack.clear()
-            self.save_to_history()
-            self.set_tool_draw()
-
-    def go_to_menu(self):
-        """Launches main.py in a separate process and terminates the current window."""
+    def go_to_menu(self, instance=None):
         try:
-            # Uses sys.executable to ensure main.py runs with the same python environment
             subprocess.Popen([sys.executable, "main.py"])
-            self.root.destroy()
+            self.stop()
         except Exception as e:
-            messagebox.showerror("Error", f"Could not launch main.py:\n{e}")
+            print(f"Error launching main.py: {e}")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = ProfessionalDrawingApp(root)
-    root.mainloop()
+    StudioCanvasProApp().run()
