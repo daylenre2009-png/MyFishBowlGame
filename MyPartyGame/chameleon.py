@@ -373,9 +373,8 @@ class SettingsScreen(Screen):
             self.update_ui()
 
     def exit_to_master_menu(self, instance):
-        subprocess.Popen([sys.executable, "main.py"])
-        App.get_running_app().stop()
-
+        # Instead of shutting down the app, safely return to the 'menu' screen
+        self.manager.current = 'menu'
 
 class PassScreen(Screen):
     def __init__(self, **kwargs):
