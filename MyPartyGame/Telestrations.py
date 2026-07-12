@@ -1,5 +1,3 @@
-import time
-import subprocess
 import sys
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, Screen
@@ -44,29 +42,25 @@ class MainMenu(ColoredScreen):
         super().__init__(**kwargs)
         
         root_anchor = AnchorLayout(anchor_x='center', anchor_y='center', padding=30)
-        
-        # --- DYNAMIC MOBILE VS DESKTOP SIZING ---
         is_mobile = platform in ('android', 'ios')
         
         main_layout = BoxLayout(
             orientation='vertical', 
             spacing=25, 
-            size_hint=(0.9 if is_mobile else 0.6, None),  # Wider aspect ratio on phones
-            height=360 if is_mobile else 400              # Slightly shorter box for phone screens
+            size_hint=(0.9 if is_mobile else 0.6, None),
+            height=410 if is_mobile else 450             
         )
         
-        # Header Layout (Title + Settings button)
         header_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=80, spacing=15)
         
         title_label = Label(
             text="Telestrations", 
             bold=True, 
-            size_hint_x=0.70,  # 70% of row allocated to title canvas
+            size_hint_x=0.70,  
             halign='left', 
             valign='middle'
         )
         title_label.bind(size=title_label.setter('text_size'))
-        # Scales font dynamically relative to layout height context
         title_label.bind(height=lambda instance, val: setattr(instance, 'font_size', f'{val * 0.55}sp'))
         header_layout.add_widget(title_label)
         
@@ -74,7 +68,7 @@ class MainMenu(ColoredScreen):
             text="Total passes?",
             markup=True, 
             size_hint=(None, 1.0), 
-            width=140 if is_mobile else 180, # Clean custom width boundary
+            width=140 if is_mobile else 180, 
             background_color=BUTTON_BG, 
             background_normal='',
             font_size='14sp' if is_mobile else '18sp'
@@ -87,7 +81,6 @@ class MainMenu(ColoredScreen):
         
         main_layout.add_widget(header_layout)
         
-        # Polished Input Field (Strict single line)
         self.word_input = TextInput(
             hint_text="Enter a secret word/phrase to start...",
             multiline=False,
@@ -99,7 +92,6 @@ class MainMenu(ColoredScreen):
         )
         main_layout.add_widget(self.word_input)
         
-        # Polished Action Button
         start_btn = Button(
             text="Start Game", 
             size_hint_y=None, 
@@ -110,9 +102,24 @@ class MainMenu(ColoredScreen):
         )
         start_btn.bind(on_press=self.start_game)
         main_layout.add_widget(start_btn)
+
+        # Added dynamic native system dashboard return button
+        back_btn = Button(
+            text="Back to Dashboard", 
+            size_hint_y=None, 
+            height=45, 
+            font_size='16sp',
+            background_color=BUTTON_BG, 
+            background_normal=''
+        )
+        back_btn.bind(on_press=self.go_to_dashboard)
+        main_layout.add_widget(back_btn)
         
         root_anchor.add_widget(main_layout)
         self.add_widget(root_anchor)
+
+    def go_to_dashboard(self, instance):
+        self.manager.current = "main_dashboard"
 
     def open_settings(self, instance):
         global TOTAL_PASSES
@@ -157,7 +164,7 @@ class MainMenu(ColoredScreen):
         game_history = [] 
         if self.word_input.text.strip():
             game_history.append(self.word_input.text.strip())
-            self.manager.current = 'draw_screen'
+            self.manager.current = 'telestrations_draw_screen'
 
 class DrawingCanvas(BoxLayout):
     def __init__(self, on_start_drawing=None, **kwargs):
@@ -239,7 +246,7 @@ class DrawScreen(ColoredScreen):
         game_history.append(fixed_texture)
         
         self.canvas_widget.clear_canvas()
-        self.manager.current = 'guess_screen'
+        self.manager.current = 'telestrations_guess_screen'
 
 class GuessScreen(ColoredScreen):
     def on_enter(self):
@@ -283,9 +290,9 @@ class GuessScreen(ColoredScreen):
         game_history.append(guess_text)
         
         if len(game_history) >= TOTAL_PASSES + 1: 
-            self.manager.current = 'end_screen'
+            self.manager.current = 'telestrations_end_screen'
         else:
-            self.manager.current = 'draw_screen'
+            self.manager.current = 'telestrations_draw_screen'
 
 class EndScreen(ColoredScreen):
     def on_enter(self):
@@ -317,21 +324,4 @@ class EndScreen(ColoredScreen):
         self.add_widget(layout)
 
     def go_to_menu(self, instance):
-        try:
-            subprocess.Popen([sys.executable, 'main.py'])
-        except Exception as e:
-            print(f"Failed to launch main.py: {e}")
-            
-        App.get_running_app().stop()
-
-class TelestrationsApp(App):
-    def build(self):
-        sm = ScreenManager()
-        sm.add_widget(MainMenu(name='main_menu'))
-        sm.add_widget(DrawScreen(name='draw_screen'))
-        sm.add_widget(GuessScreen(name='guess_screen'))
-        sm.add_widget(EndScreen(name='end_screen'))
-        return sm
-
-if __name__ == '__main__':
-    TelestrationsApp().run()
+        self.manager.current = 'telestrations_menu'
