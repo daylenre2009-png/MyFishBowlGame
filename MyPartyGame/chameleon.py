@@ -1,5 +1,4 @@
 import random
-import subprocess
 import sys
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, Screen
@@ -12,10 +11,6 @@ from kivy.uix.scrollview import ScrollView
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle
 from kivy.clock import Clock
-
-# Adjust window size to fit the dense layout gracefully
-Window.clearcolor = (0.102, 0.102, 0.118, 1)
-Window.size = (480, 750)
 
 # Color Theme Constants
 COLOR_BG = (0.102, 0.102, 0.118, 1)          
@@ -162,7 +157,15 @@ class MenuScreen(Screen):
         bottom_layout.add_widget(btn_start)
         main_layout.add_widget(bottom_layout)
         
+        # Add a custom back to launcher dashboard button
+        btn_dashboard = Button(text="DASHBOARD", font_size='14sp', size_hint_y=None, height='40dp', background_color=COLOR_BUTTON_BG)
+        btn_dashboard.bind(on_press=self.go_to_dashboard)
+        main_layout.add_widget(btn_dashboard)
+        
         self.add_widget(main_layout)
+
+    def go_to_dashboard(self, instance):
+        self.manager.current = "main_dashboard"
 
     def decrease_players(self, instance):
         if game_state.num_players > 3:
@@ -176,12 +179,12 @@ class MenuScreen(Screen):
 
     def start_game(self, instance):
         game_state.setup_game()
-        self.manager.get_screen('pass').update_ui()
-        self.manager.current = 'pass'
+        self.manager.get_screen('chameleon_pass').update_ui()
+        self.manager.current = 'chameleon_pass'
 
     def go_to_settings(self, instance):
-        self.manager.get_screen('settings').update_ui()
-        self.manager.current = 'settings'
+        self.manager.get_screen('chameleon_settings').update_ui()
+        self.manager.current = 'chameleon_settings'
 
 
 class SettingsScreen(Screen):
@@ -373,8 +376,7 @@ class SettingsScreen(Screen):
             self.update_ui()
 
     def exit_to_master_menu(self, instance):
-        # Instead of shutting down the app, safely return to the 'menu' screen
-        self.manager.current = 'menu'
+        self.manager.current = 'chameleon_menu'
 
 class PassScreen(Screen):
     def __init__(self, **kwargs):
@@ -417,8 +419,8 @@ class PassScreen(Screen):
         if game_state.current_player < game_state.num_players:
             self.update_ui()
         else:
-            self.manager.get_screen('discussion').start_discussion()
-            self.manager.current = 'discussion'
+            self.manager.get_screen('chameleon_discussion').start_discussion()
+            self.manager.current = 'chameleon_discussion'
 
 
 class DiscussionScreen(Screen):
@@ -494,23 +496,9 @@ class DiscussionScreen(Screen):
         self.button_container.add_widget(btn_play_again)
 
     def back_to_menu(self, instance):
-        subprocess.Popen([sys.executable, "main.py"])
-        App.get_running_app().stop()
+        self.manager.current = "main_dashboard"
 
     def play_again(self, instance):
         game_state.setup_game()
-        self.manager.get_screen('pass').update_ui()
-        self.manager.current = 'pass'
-
-
-class ChameleonApp(App):
-    def build(self):
-        sm = ScreenManager()
-        sm.add_widget(MenuScreen(name='menu'))
-        sm.add_widget(SettingsScreen(name='settings'))
-        sm.add_widget(PassScreen(name='pass'))
-        sm.add_widget(DiscussionScreen(name='discussion'))
-        return sm
-
-if __name__ == '__main__':
-    ChameleonApp().run()
+        self.manager.get_screen('chameleon_pass').update_ui()
+        self.manager.current = 'chameleon_pass'
