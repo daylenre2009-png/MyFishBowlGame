@@ -2,15 +2,11 @@ import os
 import random
 from typing import List, Dict
 import sys
-import subprocess
 
-# CRITICAL: This environment variable bypasses the broken Mac touch provider 
-# on Python 3.13+ and falls back to standard mouse clicks.
-from kivy.utils import platform
-if platform in ('macosx', 'win', 'linux'):
-    os.environ['KIVY_NO_INPUT'] = '1'
+os.environ['KIVY_NO_INPUT'] = '1'
 
 from kivy.app import App
+from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.button import Button
@@ -26,137 +22,48 @@ from kivy.core.text import Label as CoreLabel
 from kivy.graphics import Color, Rectangle, Line
 from kivy.metrics import dp
 
+# Dynamic import configuration links
+import chameleon
+import Telestrations
+
 # ==========================================
 # CONSTANTS & CONFIGURATION (THEMING)
 # ==========================================
-COLOR_BG = (0.102, 0.102, 0.118, 1)          # #1A1A1E
-COLOR_BARREL_BG = (0.145, 0.145, 0.161, 1)   # #252529
-COLOR_BORDER = (0.247, 0.247, 0.275, 1)      # #3F3F46
-COLOR_ACCENT_BLUE = (0.388, 0.400, 0.945, 1)  # #6366F1
-COLOR_ACCENT_GREEN = (0.063, 0.725, 0.506, 1) # #10B981
-COLOR_ACCENT_PURPLE = (0.658, 0.356, 0.945, 1)# #A855F7
-COLOR_ACCENT_ORANGE = (0.960, 0.501, 0.121, 1)# #F97316
-COLOR_BUTTON_BG = (0.180, 0.188, 0.337, 1)    # #2E3056
+COLOR_BG = (0.102, 0.102, 0.118, 1)          
+COLOR_BARREL_BG = (0.145, 0.145, 0.161, 1)   
+COLOR_BORDER = (0.247, 0.247, 0.275, 1)      
+COLOR_ACCENT_BLUE = (0.388, 0.400, 0.945, 1)  
+COLOR_ACCENT_GREEN = (0.063, 0.725, 0.506, 1) 
+COLOR_ACCENT_PURPLE = (0.658, 0.356, 0.945, 1)
+COLOR_ACCENT_ORANGE = (0.960, 0.501, 0.121, 1)
+COLOR_BUTTON_BG = (0.180, 0.188, 0.337, 1)    
 
-# Global Game Assets
 GAME_DATA_POOLS = {
     "words": [
-        "Car (Drive, Wheels, Road, Engine, Transport)", "Diamond (Gem, Ring, Shiny, Expensive, Crystal)", 
-        "Butterfly (Wings, Insect, Cocoon, Fly, Colorful)", "Doctor (Hospital, Medicine, Sick, Health, Stethoscope)", 
-        "Bridge (River, Cross, Road, Water, Over)", "Robot (Machine, Metal, Future, AI, Gears)", 
-        "Camera (Photo, Lens, Flash, Picture, Shoot)", "Dinosaur (Fossil, Bones, Ancient, T-Rex, Extinct)", 
-        "Axe (Wood, Chop, Tool, Sharp, Tree)", "Submarine (Underwater, Ocean, Sonar, Navy, Deep)", 
-        "Feather (Bird, Wing, Light, Soft, Pen)", "Clock (Time, Hours, Minutes, Tick, Watch)", 
-        "Cactus (Desert, Plant, Spikes, Green, Sand)", "Elephant (Trunk, Large, Tusks, Africa, Animal)", 
-        "Mirror (Reflection, Glass, Look, Wall, Face)", "Cigarette (Smoke, Ash, Fire, Tobacco, Puff)", 
-        "Ocean (Water, Sea, Fish, Waves, Blue)", "Glove (Hand, Winter, Warm, Fingers, Wear)", 
-        "Broom (Sweep, Clean, Floor, Witch, Dust)", "Backpack (School, Bag, Straps, Books, Carry)", 
-        "Frog (Green, Jump, Pond, Toad, Croak)", "Pillow (Bed, Sleep, Head, Soft, Night)", 
-        "Coffee (Drink, Morning, Mug, Caffeine, Beans)", "Bear (Woods, Forest, Hibernate, Teddy, Animal)", 
-        "Onion (Vegetable, Cry, Layers, Cook, Ring)", "Castle (King, Queen, Fort, Stone, Moat)", 
-        "Shark (Ocean, Teeth, Fin, Swim, Predator)", "Airplane (Fly, Sky, Airport, Wings, Pilot)", 
-        "Bee (Honey, Buzz, Insect, Sting, Yellow)", "Volcano (Lava, Magma, Mountain, Erupt, Ash)", 
-        "Moneym (Cash, Dollar, Wallet, Buy, Coin)", "Iceberg (Cold, Ocean, Titanic, Glacier, Frozen)", 
-        "Computer (Screen, Keyboard, Mouse, Internet, Tech)", "Helicopter (Fly, Blades, Sky, Chopper, Pilot)", 
-        "Cat (Meow, Purr, Pet, Whiskers, Feline)", "Astronaut (Space, Rocket, Moon, Suit, NASA)", 
-        "Telescope (Stars, Space, Planets, Night, Lens)", "Hat (Head, Wear, Cap, Sun, Fashion)", 
-        "Key (Lock, Door, Car, Metal, Open)", "Envelope (Letter, Mail, Stamp, Paper, Send)", 
-        "Pizza (Cheese, Sauce, Slice, Italian, Delivery)", "Ladder (Climb, High, Steps, Rungs, Wall)", 
-        "Guitar (Music, Strings, Instrument, Play, Rock)", "Alien (Space, UFO, Green, Planet, Martian)", 
-        "Flower (Rose, Garden, Plant, Petal, Bloom)", "Rain (Water, Sky, Clouds, Storm, Wet)", 
-        "Bicycle (Wheels, Pedals, Ride, Helmet, Chain)", "Anchor (Ship, Boat, Sea, Heavy, Water)", 
-        "Scuba (Dive, Ocean, Tank, Mask, Swim)", "Firefighter (Truck, Hose, Water, Siren, Brave)", 
-        "Microscope (Science, Lab, Cells, Lens, Tiny)", "Lantern (Light, Lamp, Dark, Camp, Flame)", 
-        "Book (Read, Pages, Library, Cover, Story)", "Dog (Bark, Pet, Puppy, Tail, Canine)", 
-        "Tornado (Wind, Storm, Twister, Weather, Destruction)", "Piano (Music, Keys, Instrument, Play, Black)", 
-        "Ice (Cold, Water, Frozen, Cube, Melt)", "Rocket (Space, Launch, Fly, NASA, Fuel)", 
-        "Kangaroo (Jump, Pouch, Australia, Animal, Hop)", "Egg (Chicken, Shell, Breakfast, Yolk, White)", 
-        "Blender (Kitchen, Smoothie, Mix, Fruit, Ice)", "Desert (Sand, Hot, Cactus, Dry, Camel)", 
-        "Fruit (Fruit, Red, Tree, Crisp, Pie)", "Kite (Fly, Wind, String, Sky, Paper)", 
-        "River (Water, Flow, Stream, Fish, Boat)", "Ring (Finger, Gold, Marriage, Diamond, Jewelry)", 
-        "Forest (Trees, Woods, Nature, Green, Animals)", "Banana (Fruit, Yellow, Peel, Monkey, Bunch)", 
-        "Orange (Fruit, Citrus, Color, Juice, Peel)", "Honey (Bee, Sweet, Jar, Hive, Sticky)", 
-        "Octopus (Eight, Tentacles, Ocean, Ink, Sea)", "Knife (Sharp, Cut, Kitchen, Blade, Food)", 
-        "Lion (King, Roar, Mane, Safari, Cat)", "Crown (King, Queen, Gold, Head, Royal)", 
-        "Spider (Web, Eight, Legs, Bug, Arachnid)", "Mountain (Climb, Peak, Snow, High, Hike)", 
-        "Eagle (Bird, Sky, Wings, Prey, American)", "Fish (Swim, Water, Ocean, Scales, Gills)", 
-        "Balloon (Air, Party, String, Float, Pop)", "House (Home, Roof, Live, Building, Door)", 
-        "Candle (Wax, Flame, Light, Fire, Wick)", "Chair (Sit, Furniture, Table, Legs, Wood)", 
-        "Jungle (Trees, Vines, Rainforest, Wild, Animals)", "Owl (Bird, Night, Wise, Hoot, Feathers)", 
-        "Chef (Cook, Food, Kitchen, Restaurant, Hat)", "Magnet (Metal, Pull, North, South, Attract)", 
-        "Necklace (Jewelry, Neck, Chain, Gold, Wear)", "Hammer (Nail, Tool, Hit, Wood, Build)", 
-        "Fork (Eat, Food, Utensil, Prongs, Dinner)", "Dragon (Fire, Myth, Scales, Wings, Treasure)", 
-        "Cloud (Sky, Rain, White, Weather, Fluffy)", "Battery (Power, Energy, Charge, Electricity, Toy)", 
-        "Beach (Sand, Ocean, Sun, Waves, Towel)", "Pirate (Ship, Treasure, Map, Eye-patch, Captain)", 
-        "Door (Open, Close, Handle, Room, Entrance)", "Horse (Ride, Gallop, Animal, Cowboy, Saddle)", 
-        "Penguin (Ice, Bird, Tuxedo, Swim, Antarctica)", "Lamp (Light, Bulb, Desk, Switch, Shine)", 
-        "Ninja (Stealth, Sword, Black, Shadow, Mask)", "Moon (Night, Sky, Space, Orbit, Stars)"
+        "Astronaut (Space, Rocket, Moon, Suit, NASA)", "Apple (Fruit, Red, Tree, Crisp, Pie)", 
+        "Airplane (Fly, Sky, Airport, Wings, Pilot)", "Alien (Space, UFO, Green, Planet, Martian)", 
+        "Anchor (Ship, Boat, Sea, Heavy, Water)", "Backpack (School, Bag, Straps, Books, Carry)", 
+        "Bicycle (Wheels, Pedals, Ride, Helmet, Chain)", "Blender (Kitchen, Smoothie, Mix, Fruit, Ice)", 
+        "Bear (Woods, Forest, Hibernate, Teddy, Animal)", "Banana (Fruit, Yellow, Peel, Monkey, Bunch)"
     ],
     "actions": [
-        "Playing rock-paper-scissors", "Defusing a time bomb", "Walking through sand dunes", "Sewing a rip in a jacket", 
-        "Pouring a glass of water carefully", "Washing a dirty car", "Building a snowman", "Surfing a massive wave", 
-        "Slipping on an icy sidewalk", "Ironing a shirt", "Shaving a beard", "Feeding bread to ducks", 
-        "Raking autumn leaves", "Trying to swat a fly", "Climbing a steep mountain", "Driving a racecar", 
-        "Playing the flute", "Sneaking past a sleeping guard", "Slicing fresh bread", "Mowing the lawn", 
-        "Walking a stubborn dog", "Chopping onions and crying", "Stretching before a big race", "Baking a cake", 
-        "Walking down a catwalk", "Skating on smooth ice", "Riding a bumpy camel", "Eating a very spicy pepper", 
-        "Typing frantically on a keyboard", "Shoveling snow", "Doing a gymnastics routine", "Tying a necktie", 
-        "Putting on makeup", "Watering a garden hose", "Scuba diving underwater", "Blowing up a giant balloon", 
-        "Peeling a sticky orange", "Blowing out birthday candles", "Riding a wild rollercoaster", "Directing traffic", 
-        "Plucking a guitar string", "Catching a big fish", "Answering a ringing phone", "Walking through deep mud", 
-        "Putting on a heavy coat", "Stuck in a heavy downpour", "Licking an ice cream cone", "Hanging up wet laundry", 
-        "Walking like a robot", "Skiing down a snowy slope", "Chasing a runaway chicken", "Drinking a sour lemon drink", 
-        "Marching in a brass band", "Tying your shoes in a hurry", "Playing a game of bowling", "Swinging a baseball bat", 
-        "Lifting heavy weights", "Pumping up a bicycle tire", "Stirring a big pot of soup", "Sweeping up broken glass", 
-        "Flying a kite", "Milking a cow", "Juggling three balls", "Planting a small flower seed", 
-        "Picking fresh apples from a tree", "Trying to sleep with a mosquito around", "Petting a giant lion", "Rock climbing a cliff face", 
-        "Rowing a boat upstream", "Conducting a symphonic orchestra", "Shooting a basketball", "Kicking a soccer ball", 
-        "Walking a tightrope", "Opening a stuck jar", "Hitching a ride on a road", "Brushing your teeth", 
-        "Playing the drums", "Combing long tangled hair", "Walking through a haunted house", "Painting a masterpiece", 
-        "Singing in the shower", "Trying on a tight pair of jeans", "Building a tall card tower", "Dancing the tango", 
-        "Wrapping a birthday present", "Changing a flat car tire", "Threading a very small needle", "Doing the moonwalk", 
-        "Playing a game of tennis", "Walking on a windy beach"
+        "Playing rock-paper-scissors", "Defusing a time bomb", "Walking through sand dunes", 
+        "Sewing a rip in a jacket", "Pouring a glass of water carefully", "Washing a dirty car"
     ],
     "categories": [
-        "Insects", "Websites", "Things Found on a Beach", "Types of Fabric", 
-        "Superheroes", "Dances", "Things Made of Wood", "Fast Food Chains", 
-        "Historical Figures", "Types of Weather", "A Boy's Name", "Breakfast Foods", 
-        "Ocean Life", "Sports Teams", "Vegetables", "A Girl's Name", 
-        "Things That Are Sweet", "Holiday Names", "Types of Music", "Tools", 
-        "Things in a Classroom", "Types of Shoes", "Types of Candy", "Yard/Garden Tools", 
-        "Fairy Tale Characters", "TV Shows", "Things Found in Space", "Apps on a Phone", 
-        "Things That Are Cold", "Items In A Refrigerator", "Colors", "Video Games", 
-        "Musical Instruments", "Things Made of Metal", "Cites", "Street Names", 
-        "Things That Are Fast", "Pizza Toppings", "Things That Are Round", "Shapes", 
-        "School Subjects", "Movie Titles", "Monsters", "Types of Cats", 
-        "Hot Drinks", "Clothing Items", "Languages", "Things That Are Loud", 
-        "Types of Vehicles", "Animals", "Parts of a Car", "Planets", 
-        "Board Games", "Types of Sandwiches", "Mythical Creatures", "Soups", 
-        "Weapons", "Greek Gods", "Things That Are Wet", "Things That Are Soft", 
-        "Bakery Items", "Fish Species", "Ice Cream Flavors", "Supervillains", 
-        "Countries", "Things in a Kitchen", "Actresses", "Soft Drinks", 
-        "Things in a Bathroom", "Reptiles", "Types of Dogs", "Cartoon Characters", 
-        "Hobbies", "Types of Pasta", "Types of Cheese", "Brands of Cars", 
-        "Authors", "Spices and Herbs", "Birds", "Constellations", 
-        "Flowers", "Things in a Bedroom", "Things in a Living Room", "Book Titles", 
-        "Rivers", "Fruits", "Jobs/Professions", "Musical Artists", 
-        "Colors in a Rainbow", "Mammals", "Actors", "Things That Are Hot", 
-        "Trees", "Mountains"
+        "A Boy's Name", "A Girl's Name", "Animals", "Things That Are Cold", 
+        "Insects", "TV Shows", "Items In A Refrigerator", "Street Names"
     ],
     "letters": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"],
     "vowels": ["A", "E", "I", "O", "U", "Y"]
 }
 
-
 class SilentImage(KivyImage):
-    """Custom Kivy Image variant that handles rendering drops cleanly on exception."""
     def on_image_error(self, *args) -> bool:
         self.texture = None
         return True
 
-
 class BarrelSpinner(Widget):
-    """Custom graphical selection wheel widget utilizing OpenGL canvas draws."""
     def __init__(self, title: str, options: List[str], accent_color: tuple, on_finish_callback, **kwargs):
         super().__init__(**kwargs)
         self.title = title
@@ -172,9 +79,10 @@ class BarrelSpinner(Widget):
         self.bind(size=self._redraw, pos=self._redraw)
         
     def _redraw(self, *args):
-        self.canvas.clear()
-        if not self.options:
+        if self.height <= 0 or self.width <= 0 or not self.options:
             return
+            
+        self.canvas.clear()
 
         with self.canvas:
             Color(*COLOR_BARREL_BG)
@@ -258,62 +166,43 @@ class BarrelSpinner(Widget):
             self.on_finish_callback(self.options[winning_index])
 
 
-class UnifiedCardAndWheelApp(App):
-    """Main application controller managing state, core layout setups, and dropdown events."""
-    def build(self) -> BoxLayout:
-        self.title = "Interactive Card & 5 Barrel Spinners"
-        
-        # Audio Initialization
-        self.card_sound = SoundLoader.load("assets/Sounds/flip.mp3")
-        self.spinner_sound = SoundLoader.load("assets/Sounds/spin.mp3")
-
-        # Session Game Tracking State Variables
+class CardAndWheelScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.current_round_num = 1
         self.card_flips_count = 0
         self.flips_target_limit = 5  
 
-        # Load Local Configurations dynamically via standard data pool reference
         self.options1 = GAME_DATA_POOLS["words"]
         self.options2 = GAME_DATA_POOLS["actions"]
         self.options3 = GAME_DATA_POOLS["categories"]
         self.options4 = GAME_DATA_POOLS["letters"]
         self.options5 = GAME_DATA_POOLS["vowels"]
 
-        self.round_descriptions = {
-            1: "Round 1: Talk!",
-            2: "Round 2: Act!",
-            3: "Round 3: Draw!"
-        }
-
+        self.round_descriptions = {1: "Round 1: Talk!", 2: "Round 2: Act!", 3: "Round 3: Draw!"}
         self.card_back_path = "assets/sprites/back.png"
         self.card_pool1 = ["assets/sprites/0.png", "assets/sprites/1.png", "assets/sprites/8.png"]
         self.card_pool2 = ["assets/sprites/6.png", "assets/sprites/7.png"]
         self.card_pool3 = ["assets/sprites/2.png", "assets/sprites/3.png", "assets/sprites/4.png", "assets/sprites/5.png"]
 
-        # Base Layout Parent Container Setup
         self.root_layout = BoxLayout(orientation='vertical', padding=dp(12), spacing=dp(8))
         with self.root_layout.canvas.before:
             Color(*COLOR_BG)
             self.bg_rect = Rectangle(pos=self.root_layout.pos, size=self.root_layout.size)
         self.root_layout.bind(pos=self._update_bg, size=self._update_bg)
 
-        # Build UI Sub-Components Modularly
         self._build_top_navbar()
         self._build_main_gameplay_views()
         self._build_status_footer()
-
-        return self.root_layout
+        self.add_widget(self.root_layout)
 
     def _build_top_navbar(self):
-        """Constructs top navigation view block containing dropdown systems and setup button configs."""
         self.top_nav = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(40), spacing=dp(10))
-        
-        # 'My Games' Sub-engine drop building module setup
         self.my_games_btn = Button(text="My Games", font_size='12sp', bold=True, size_hint_x=None, width=dp(110),
                                    background_normal='', background_color=COLOR_BUTTON_BG, color=(1,1,1,1))
         
         self.games_dropdown = DropDown()
-        for item in ["Telestrations", "Chameleon", "Pictionary"]:
+        for item in ["Dashboard", "Telestrations", "Chameleon"]:
             btn = Button(text=item, size_hint_y=None, height=dp(35), font_size='12sp',
                          background_normal='', background_color=COLOR_BARREL_BG, color=(0.9, 0.9, 0.9, 1))
             btn.bind(on_release=lambda btn_obj: self.games_dropdown.select(btn_obj.text))
@@ -322,22 +211,19 @@ class UnifiedCardAndWheelApp(App):
         self.my_games_btn.bind(on_release=self.games_dropdown.open)
         self.games_dropdown.bind(on_select=self.handle_game_selection)
         
-        # Settings menu configuration element properties
         self.menu_btn = Button(text="Settings", font_size='14sp', bold=True, size_hint_x=None, width=dp(100),
                                background_normal='', background_color=COLOR_BUTTON_BG, color=(1,1,1,1))
         self.menu_btn.bind(on_release=self.open_prompt_editor)
         
         self.top_nav.add_widget(self.my_games_btn)
-        self.top_nav.add_widget(Widget())  # Spacer layout pushing properties horizontally
+        self.top_nav.add_widget(Widget())
         self.top_nav.add_widget(self.menu_btn)
         self.root_layout.add_widget(self.top_nav)
 
     def _build_main_gameplay_views(self):
-        """Builds central responsive core container containing asset cards block and custom spin barrels."""
         self.main_container = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=1.0)
         self.root_layout.bind(size=self.adjust_layout_orientation)
 
-        # Graphical card visualization structures UI
         self.card_layout_block = BoxLayout(orientation='vertical', size_hint_y=0.35, spacing=dp(4))
         self.round_header_label = Label(text=self.get_round_string_meta(), font_size='11sp', bold=True,
                                         color=COLOR_ACCENT_ORANGE, size_hint_y=None, height=dp(18), halign='center')
@@ -351,7 +237,6 @@ class UnifiedCardAndWheelApp(App):
         self.card_anchor.add_widget(self.card_img)
         self.card_layout_block.add_widget(self.card_anchor)
 
-        # Five component individual configuration layouts setup assembly blocks
         self.barrels_container = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=0.65)
         
         self.barrel1 = BarrelSpinner("Words", self.options1, COLOR_ACCENT_BLUE, self.update_winner_1)
@@ -360,7 +245,6 @@ class UnifiedCardAndWheelApp(App):
         self.barrel4 = BarrelSpinner("Letters", self.options4, COLOR_ACCENT_ORANGE, self.update_winner_4)
         self.barrel5 = BarrelSpinner("Vowels", self.options5, COLOR_ACCENT_BLUE, self.update_winner_5)
 
-        # Append functional nested wrapped elements safely inside visual containers
         self.barrels_container.add_widget(self._create_labeled_wrapper("Words", COLOR_ACCENT_BLUE, self.barrel1))
         self.barrels_container.add_widget(self._create_labeled_wrapper("Action", COLOR_ACCENT_GREEN, self.barrel2))
         self.barrels_container.add_widget(self._create_labeled_wrapper("Categories", COLOR_ACCENT_PURPLE, self.barrel3))
@@ -375,7 +259,6 @@ class UnifiedCardAndWheelApp(App):
         self.root_layout.add_widget(self.main_container)
 
     def _build_status_footer(self):
-        """Assembles standard bottom output metrics view bar to keep tracking system logs visible."""
         self.output_label = Label(text="Play a card and spin the barrels!", font_size='13sp', bold=True,
                                   color=(1,1,1,1), size_hint_y=None, height=dp(40), halign='center', valign='middle')
         self.output_label.bind(size=lambda i, v: setattr(i, 'text_size', (i.width, None)))
@@ -383,7 +266,6 @@ class UnifiedCardAndWheelApp(App):
         self.game_over_view = None
 
     def _create_labeled_wrapper(self, label_text: str, accent_color: tuple, widget_element: Widget) -> BoxLayout:
-        """Helper construction factory to create standardized design panels layout blocks cleaner."""
         wrapper = BoxLayout(orientation='vertical', spacing=dp(2))
         lbl = Label(text=label_text, font_size='9sp', bold=True, color=accent_color, size_hint_y=None, height=dp(12), halign='left')
         lbl.bind(size=lambda i, v: setattr(i, 'text_size', (i.width, None)))
@@ -392,33 +274,12 @@ class UnifiedCardAndWheelApp(App):
         return wrapper
 
     def handle_game_selection(self, instance, game_title: str):
-        """
-        Intercepts dropdown selection, terminates the current window,
-        and launches the target game as an independent script execution.
-        """
-        self.output_label.text = f"Launching: {game_title}..."
-        
-        # Map dropdown selections to their corresponding standalone python scripts
-        game_script_mapping = {
-            "Telestrations": "Telestrations.py",
-            "Chameleon": "Chameleon.py",
-            "Pictionary": "Pictionary.py"
-        }
-        
-        target_script = game_script_mapping.get(game_title)
-        
-        if target_script:
-            try:
-                # 1. Spawn the new Python script as a detached background system process
-                subprocess.Popen([sys.executable, target_script])
-                
-                # 2. Smoothly terminate the dashboard app window to clean up CPU/GPU RAM
-                App.get_running_app().stop()
-                
-            except Exception as e:
-                self.output_label.text = f"Failed to execute game script: {str(e)}"
-        else:
-            self.output_label.text = f"Error: Game script not found for '{game_title}'"
+        if game_title == "Dashboard":
+            self.manager.current = "main_dashboard"
+        elif game_title == "Telestrations":
+            self.manager.current = "telestrations_menu"
+        elif game_title == "Chameleon":
+            self.manager.current = "chameleon_menu"
 
     def get_round_string_meta(self) -> str:
         desc = self.round_descriptions.get(self.current_round_num, "Game Session Completed!")
@@ -432,20 +293,18 @@ class UnifiedCardAndWheelApp(App):
     def adjust_layout_orientation(self, instance, size: List[float]):
         if self.current_round_num > 3:
             return  
-            
         barrels = [self.barrel1, self.barrel2, self.barrel3, self.barrel4, self.barrel5]
-        if all(hasattr(self, f"barrel{i}") for i in range(1, 6)):
-            for b in barrels:
-                b.canvas.clear()
-                Clock.schedule_once(lambda dt, b_obj=b: b_obj._redraw())
+        for b in barrels:
+            b.canvas.clear()
+            Clock.schedule_once(lambda dt, b_obj=b: b_obj._redraw())
 
         width, height = size
-        if width > height:  # Adaptive Landscape
+        if width > height:
             self.main_container.orientation = 'horizontal'
             self.card_layout_block.size_hint = (0.32, 1)
             self.barrels_container.size_hint = (0.68, 1)
             self.card_img.size = (height * 0.35, height * 0.46)
-        else:               # Adaptive Portrait
+        else:
             self.main_container.orientation = 'vertical'
             self.card_layout_block.size_hint = (1, 0.33)
             self.barrels_container.size_hint = (1, 0.67)
@@ -455,23 +314,24 @@ class UnifiedCardAndWheelApp(App):
         if instance.collide_point(*touch.pos):
             pool_mapping = {1: self.card_pool1, 2: self.card_pool2, 3: self.card_pool3}
             active_pool = pool_mapping.get(self.current_round_num, self.card_pool1)
-
             valid_pool = [p for p in active_pool if os.path.exists(p)]
+            
+            app = App.get_running_app()
+            if app.card_sound:
+                app.card_sound.play()
+                
             if valid_pool:
-                if self.card_sound:
-                    self.card_sound.play()
                 instance.source = random.choice(valid_pool)
-                
-                self.card_flips_count += 1
-                if self.card_flips_count >= self.flips_target_limit:
-                    self.card_flips_count = 0
-                    self.current_round_num += 1
-                    
-                    if self.current_round_num > 3:
-                        self.show_game_over_screen()
-                        return True
-                
-                self.round_header_label.text = self.get_round_string_meta()
+            
+            self.card_flips_count += 1
+            if self.card_flips_count >= self.flips_target_limit:
+                self.card_flips_count = 0
+                self.current_round_num += 1
+                if self.current_round_num > 3:
+                    self.show_game_over_screen()
+                    return True
+            
+            self.round_header_label.text = self.get_round_string_meta()
             return True
         return False
 
@@ -482,7 +342,6 @@ class UnifiedCardAndWheelApp(App):
         self.my_games_btn.disabled = True
 
         self.game_over_view = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15), size_hint_y=1.0)
-        
         go_title = Label(text="GAME OVER!", font_size='28sp', bold=True, color=COLOR_ACCENT_ORANGE, size_hint_y=0.4, halign='center')
         go_desc = Label(text="All three gameplay rounds have been successfully finished.", font_size='13sp', color=(0.8, 0.8, 0.8, 1), size_hint_y=0.2, halign='center')
         
@@ -495,13 +354,11 @@ class UnifiedCardAndWheelApp(App):
         self.game_over_view.add_widget(go_title)
         self.game_over_view.add_widget(go_desc)
         self.game_over_view.add_widget(restart_anchor)
-        
         self.root_layout.add_widget(self.game_over_view)
 
     def reset_game_session(self, instance):
         self.current_round_num = 1
         self.card_flips_count = 0
-        
         if self.game_over_view:
             self.root_layout.remove_widget(self.game_over_view)
             self.game_over_view = None
@@ -516,126 +373,59 @@ class UnifiedCardAndWheelApp(App):
         
         self.root_layout.add_widget(self.main_container)
         self.root_layout.add_widget(self.output_label)
-        
         self.adjust_layout_orientation(self.root_layout, self.root_layout.size)
 
-    # Individual Spinner Value Triggers Output Receivers
-    def update_winner_1(self, res: str):
-        if self.current_round_num <= 3:
-            self.output_label.text = f"Words: {res}"
-
-    def update_winner_2(self, res: str):
-        if self.current_round_num <= 3:
-            self.output_label.text = f"Action: {res}"
-
-    def update_winner_3(self, res: str):
-        if self.current_round_num <= 3:
-            self.output_label.text = f"Categories: {res}"
-
-    def update_winner_4(self, res: str):
-        if self.current_round_num <= 3:
-            self.output_label.text = f"Letters: {res}"
-
-    def update_winner_5(self, res: str):
-        if self.current_round_num <= 3:
-            self.output_label.text = f"Vowels: {res}"
+    def update_winner_1(self, res: str): self.output_label.text = f"Words: {res}"
+    def update_winner_2(self, res: str): self.output_label.text = f"Action: {res}"
+    def update_winner_3(self, res: str): self.output_label.text = f"Categories: {res}"
+    def update_winner_4(self, res: str): self.output_label.text = f"Letters: {res}"
+    def update_winner_5(self, res: str): self.output_label.text = f"Vowels: {res}"
 
     def open_prompt_editor(self, instance):
         content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(6))
-        with content.canvas.before:
-            Color(*COLOR_BG)
-            rect = Rectangle(pos=content.pos, size=content.size)
-            content.bind(pos=lambda i, v: setattr(rect, 'pos', i.pos), size=lambda i, v: setattr(rect, 'size', i.size))
-
-        content.add_widget(Label(text="Customize Configuration Settings", font_size='14sp', bold=True, size_hint_y=None, height=dp(20)))
-
-        limit_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30), spacing=dp(10))
-        limit_box.add_widget(Label(text="Card Flips Per Round:", font_size='11sp', bold=True, color=COLOR_ACCENT_ORANGE, size_hint_x=0.6, halign='left'))
-        txt_limit = TextInput(text=str(self.flips_target_limit), input_filter='int', multiline=False, background_color=(0.145, 0.145, 0.161, 1), foreground_color=(1,1,1,1))
-        limit_box.add_widget(txt_limit)
-        content.add_widget(limit_box)
-
-        content.add_widget(Label(text="Words Data Pool:", font_size='10sp', bold=True, color=COLOR_ACCENT_BLUE, size_hint_y=None, height=dp(12)))
-        txt_nouns = TextInput(text="\n".join(self.options1), background_color=(0.145, 0.145, 0.161, 1), foreground_color=(1,1,1,1))
-        content.add_widget(txt_nouns)
-
-        content.add_widget(Label(text="Action Data Pool:", font_size='10sp', bold=True, color=COLOR_ACCENT_GREEN, size_hint_y=None, height=dp(12)))
-        txt_verbs = TextInput(text="\n".join(self.options2), background_color=(0.145, 0.145, 0.161, 1), foreground_color=(1,1,1,1))
-        content.add_widget(txt_verbs)
-
-        content.add_widget(Label(text="Categories Data Pool:", font_size='10sp', bold=True, color=COLOR_ACCENT_PURPLE, size_hint_y=None, height=dp(12)))
-        txt_categories = TextInput(text="\n".join(self.options3), background_color=(0.145, 0.145, 0.161, 1), foreground_color=(1,1,1,1))
-        content.add_widget(txt_categories)
-
-        split_row_labels = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(12), spacing=dp(10))
-        split_row_labels.add_widget(Label(text="Letters Data Pool:", font_size='10sp', bold=True, color=COLOR_ACCENT_ORANGE, halign='left'))
-        split_row_labels.add_widget(Label(text="Vowels Data Pool:", font_size='10sp', bold=True, color=COLOR_ACCENT_BLUE, halign='left'))
-        content.add_widget(split_row_labels)
-
-        split_row_inputs = BoxLayout(orientation='horizontal', spacing=dp(10))
-        txt_letters = TextInput(text="\n".join(self.options4), background_color=(0.145, 0.145, 0.161, 1), foreground_color=(1,1,1,1))
-        txt_vowels = TextInput(text="\n".join(self.options5), background_color=(0.145, 0.145, 0.161, 1), foreground_color=(1,1,1,1))
-        split_row_inputs.add_widget(txt_letters)
-        split_row_inputs.add_widget(txt_vowels)
-        content.add_widget(split_row_inputs)
-
-        btn_bar = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(35))
-        popup = Popup(title='', content=content, size_hint=(0.95, 0.95), separator_height=0)
-
-        def save_changes(btn_instance):
-            try:
-                val = int(txt_limit.text.strip())
-                if val > 0:
-                    self.flips_target_limit = val
-            except ValueError:
-                pass
-
-            anim_lines = [line.strip() for line in txt_nouns.text.splitlines() if line.strip()]
-            verb_lines = [line.strip() for line in txt_verbs.text.splitlines() if line.strip()]
-            set_lines = [line.strip() for line in txt_categories.text.splitlines() if line.strip()]
-            obj_lines = [line.strip() for line in txt_letters.text.splitlines() if line.strip()]
-            vwl_lines = [line.strip() for line in txt_vowels.text.splitlines() if line.strip()]
-            
-            if anim_lines:
-                self.options1 = anim_lines
-                self.barrel1.options = anim_lines
-                self.barrel1.y_offset = 0.0
-                self.barrel1._redraw()
-            if verb_lines:
-                self.options2 = verb_lines
-                self.barrel2.options = verb_lines
-                self.barrel2.y_offset = 0.0
-                self.barrel2._redraw()
-            if set_lines:
-                self.options3 = set_lines
-                self.barrel3.options = set_lines
-                self.barrel3.y_offset = 0.0
-                self.barrel3._redraw()
-            if obj_lines:
-                self.options4 = obj_lines
-                self.barrel4.options = obj_lines
-                self.barrel4.y_offset = 0.0
-                self.barrel4._redraw()
-            if vwl_lines:
-                self.options5 = vwl_lines
-                self.barrel5.options = vwl_lines
-                self.barrel5.y_offset = 0.0
-                self.barrel5._redraw()
-                
+        txt_limit = TextInput(text=str(self.flips_target_limit), input_filter='int', multiline=False)
+        content.add_widget(Label(text="Card Flips Per Round:"))
+        content.add_widget(txt_limit)
+        
+        popup = Popup(title='Quick Settings', content=content, size_hint=(0.8, 0.4))
+        save_btn = Button(text="Save", background_color=COLOR_ACCENT_GREEN)
+        
+        def save(el):
+            try: self.flips_target_limit = int(txt_limit.text)
+            except: pass
             self.round_header_label.text = self.get_round_string_meta()
             popup.dismiss()
-
-        save_btn = Button(text="Save Changes", bold=True, background_normal='', background_color=COLOR_BUTTON_BG)
-        save_btn.bind(on_release=save_changes)
-        cancel_btn = Button(text="Cancel", background_normal='', background_color=(0.247, 0.247, 0.275, 1))
-        cancel_btn.bind(on_release=popup.dismiss)
-
-        btn_bar.add_widget(cancel_btn)
-        btn_bar.add_widget(save_btn)
-        content.add_widget(btn_bar)
-
+            
+        save_btn.bind(on_release=save)
+        content.add_widget(save_btn)
         popup.open()
 
+
+class UnifiedCardAndWheelApp(App):
+    def build(self) -> ScreenManager:
+        self.title = "Interactive Boardgame Companion"
+        
+        self.card_sound = SoundLoader.load("assets/Sounds/flip.mp3")
+        self.spinner_sound = SoundLoader.load("assets/Sounds/spin.mp3")
+
+        sm = ScreenManager()
+        
+        # 1. Main Dashboard
+        sm.add_widget(CardAndWheelScreen(name="main_dashboard"))
+        
+        # 2. Telestrations Screens
+        sm.add_widget(Telestrations.MainMenu(name='telestrations_menu'))
+        sm.add_widget(Telestrations.DrawScreen(name='telestrations_draw_screen'))
+        sm.add_widget(Telestrations.GuessScreen(name='telestrations_guess_screen'))
+        sm.add_widget(Telestrations.EndScreen(name='telestrations_end_screen'))
+        
+        # 3. Chameleon Screens
+        sm.add_widget(chameleon.MenuScreen(name='chameleon_menu'))
+        sm.add_widget(chameleon.SettingsScreen(name='chameleon_settings'))
+        sm.add_widget(chameleon.PassScreen(name='chameleon_pass'))
+        sm.add_widget(chameleon.DiscussionScreen(name='chameleon_discussion'))
+        
+        return sm
 
 if __name__ == "__main__":
     UnifiedCardAndWheelApp().run()
